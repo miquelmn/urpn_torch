@@ -19,7 +19,7 @@ setup(
     author_email="miquel.miro@uib.cat",
     license="MIT",
     packages=["urpn_torch"],
-    keywords=["XAI", "Deep Learning", "Computer Vision", "Saliency maps"],
+    keywords=["Instance Segmentation", "Deep Learning", "Computer Vision"],
     install_requires=install_requires,
     python_requires=">=3.8",
     long_description=long_description,
