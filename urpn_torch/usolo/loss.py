@@ -1,4 +1,5 @@
 from torch import nn
+import torch
 
 from torchvision.ops import sigmoid_focal_loss
 
@@ -14,9 +15,9 @@ class DiceLoss(nn.Module):
         y_pred = y_pred[:, 0].contiguous().view(-1)
         y_true = y_true[:, 0].contiguous().view(-1)
 
-        intersection = (y_pred * y_true).sum()
+        intersection = (y_pred * y_true).sum(axis=0)
         dsc = (2. * intersection + self.smooth) / (
-                y_pred.sum() + y_true.sum() + self.smooth
+                y_pred.sum(axis=0) + y_true.sum(axis=0) + self.smooth
         )
         return 1. - dsc
 
@@ -44,5 +45,8 @@ class SoloLoss(nn.Module):
         self.__lambda = lambd
 
     def forward(self, mask_pred, cls_pred, mask_true, cls_true):
-        return sigmoid_focal_loss(cls_pred, cls_true) + (
-                    self.__lambda * self.__loss_mask(mask_pred, cls_pred, mask_true))
+        class_loss = torch.mean(sigmoid_focal_loss(cls_pred, cls_true))
+        mask_loss = (self.__lambda * self.__loss_mask(mask_pred, cls_pred, mask_true))
+        loss =  class_loss + mask_loss
+                
+        return loss

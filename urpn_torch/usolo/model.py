@@ -13,23 +13,38 @@ class URPN(model.UNet):
     def __init__(self, in_channels=3, features=32, cells: Tuple[int, int] = (5, 5)):
         super(URPN, self).__init__(in_channels, features)
 
+        self.encoder5 = URPN._block(features * 8, features * 16, name="enc5")
+        self.pool5 = nn.MaxPool2d(kernel_size=2, stride=2)
+        
+        self.encoder6 = URPN._block(features * 16, features * 16, name="enc6")
+        self.pool6 = nn.MaxPool2d(kernel_size=2, stride=2)
+        
+        self.bottleneck = URPN._block(features * 16, features * 16, name="bottleneck")
+        
+        self.upconv6 = nn.ConvTranspose2d(features * 16, features * 16, kernel_size=2, stride=2)
+        self.decoder6 = URPN._block((features * 16) * 2, features * 16, name="dec6")
+
+        self.upconv5 = nn.ConvTranspose2d(features * 16, features * 16, kernel_size=2, stride=2)
+        self.decoder5 = URPN._block((features * 16) * 2, features * 8, name="dec5")
+        
         # Mask branch
+        self.upconv4 = nn.ConvTranspose2d(features * 8, features * 8, kernel_size=2, stride=2)
         self.decoder4 = URPN._block_coord_conv((features * 8) * 2, features * 8, name="enc1")
         self.conv = nn.Conv2d(in_channels=features, out_channels=(cells[0] * cells[1]),
                               kernel_size=1)
 
         # Class branch
-        self.cls_1 = URPN._block(features * 16, features * 8, name="cls_1")
-        # self.decoder4 = URPN._block((features * 8) * 2, features * 8, name="dec4")
+        self.cls_1 = super()._block(features * 16, features * 16, name="cls_1")
 
-        self.cls_2 = URPN._block(features * 8, features * 4, name="cls_2")
-        # self.decoder3 = URPN._block((features * 4) * 2, features * 4, name="dec3")
+        self.cls_2 = super()._block(features * 16, features * 16, name="cls_2")
 
-        self.cls_3 = URPN._block(features * 4, features * 2, name="cls_3")
-        # self.decoder2 = URPN._block((features * 2) * 2, features * 2, name="dec2")
+        self.cls_3 = super()._block(features * 16, features * 8, name="cls_3")
 
-        self.cls_4 = URPN._block(features * 2, features, name="cls_4")
-        # self.decoder1 = URPN._block(features * 2, features, name="dec1")
+        self.cls_4 = super()._block(features * 8, features * 4, name="cls_4")
+        
+        self.cls_5 = super()._block(features * 4, features * 2, name="cls_5")
+            
+        self.cls_6 = super()._block(features * 2, features, name="cls_6")
 
         self.cls_out = nn.Conv2d(in_channels=features, out_channels=1, kernel_size=1)
 
@@ -69,10 +84,21 @@ class URPN(model.UNet):
         enc2 = self.encoder2(self.pool1(enc1))
         enc3 = self.encoder3(self.pool2(enc2))
         enc4 = self.encoder4(self.pool3(enc3))
+        enc5 = self.encoder5(self.pool4(enc4))
+        enc6 = self.encoder6(self.pool5(enc5))
 
-        bottleneck = self.bottleneck(self.pool4(enc3))
+        bottleneck = self.bottleneck(self.pool6(enc6))
 
-        dec4 = self.upconv4(bottleneck)
+        dec6 = self.upconv6(bottleneck)
+        dec6 = torch.cat((dec6, enc6), dim=1)
+        dec6 = self.decoder6(dec6)
+                
+        dec5 = self.upconv5(dec6)
+        dec5 = torch.cat((dec5, enc5), dim=1)
+        dec5 = self.decoder5(dec5)
+        
+        
+        dec4 = self.upconv4(dec5)
         dec4 = torch.cat((dec4, enc4), dim=1)
         dec4 = self.decoder4(dec4)
 
@@ -89,14 +115,17 @@ class URPN(model.UNet):
         dec1 = self.decoder1(dec1)
 
         mask = torch.sigmoid(self.conv(dec1))
-
-        aligned_cls = functional.interpolate(bottleneck)
+        
+        aligned_cls = functional.interpolate(bottleneck, (5, 5))
+        
         cls1 = self.cls_1(aligned_cls)
         cls2 = self.cls_2(cls1)
         cls3 = self.cls_3(cls2)
-        cls4 = self.cls_1(cls3)
+        cls4 = self.cls_4(cls3)
+        cls5 = self.cls_5(cls4)
+        cls6 = self.cls_6(cls5)        
 
-        classification = self.cls_out(cls4)
+        classification = self.cls_out(cls6)
 
         return mask, classification
 

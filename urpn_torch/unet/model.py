@@ -8,6 +8,7 @@ class UNet(nn.Module):
 
     def __init__(self, in_channels=3, out_channels=1, features=32):
         super(UNet, self).__init__()
+        self.features = features
 
         # Encoder
         self.encoder1 = UNet._block(in_channels, features, name="enc1")
@@ -19,7 +20,7 @@ class UNet(nn.Module):
         self.encoder4 = UNet._block(features * 4, features * 8, name="enc4")
         self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.bottleneck = UNet._block(features * 4, features * 8, name="bottleneck")
+        self.bottleneck = UNet._block(features * 8, features * 16, name="bottleneck")
 
         # Decoder
         self.upconv4 = nn.ConvTranspose2d(features * 16, features * 8, kernel_size=2, stride=2)
@@ -42,7 +43,7 @@ class UNet(nn.Module):
         enc3 = self.encoder3(self.pool2(enc2))
         enc4 = self.encoder4(self.pool3(enc3))
 
-        bottleneck = self.bottleneck(self.pool4(enc3))
+        bottleneck = self.bottleneck(self.pool4(enc4))
 
         dec4 = self.upconv4(bottleneck)
         dec4 = torch.cat((dec4, enc4), dim=1)
