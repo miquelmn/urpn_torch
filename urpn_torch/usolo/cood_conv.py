@@ -40,10 +40,18 @@ class AddCoordinates(object):
     def __call__(self, image):
         batch_size, _, image_height, image_width = image.size()
 
-        y_coords = 2.0 * torch.arange(image_height).unsqueeze(
-            1).expand(image_height, image_width) / (image_height - 1.0) - 1.0
-        x_coords = 2.0 * torch.arange(image_width).unsqueeze(
-            0).expand(image_height, image_width) / (image_width - 1.0) - 1.0
+        y_coords = (
+            2.0
+            * torch.arange(image_height).unsqueeze(1).expand(image_height, image_width)
+            / (image_height - 1.0)
+            - 1.0
+        )
+        x_coords = (
+            2.0
+            * torch.arange(image_width).unsqueeze(0).expand(image_height, image_width)
+            / (image_width - 1.0)
+            - 1.0
+        )
 
         coords = torch.stack((y_coords, x_coords), dim=0)
 
@@ -84,19 +92,34 @@ class CoordConv(nn.Module):
         >>> output = coord_conv(input)
     """
 
-    def __init__(self, in_channels, out_channels, kernel_size,
-                 stride=1, padding=0, dilation=1, groups=1, bias=True,
-                 with_r=False):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        dilation=1,
+        groups=1,
+        bias=True,
+        with_r=False,
+    ):
         super(CoordConv, self).__init__()
 
         in_channels += 2
         if with_r:
             in_channels += 1
 
-        self.conv_layer = nn.Conv2d(in_channels, out_channels,
-                                    kernel_size, stride=stride,
-                                    padding=padding, dilation=dilation,
-                                    groups=groups, bias=bias)
+        self.conv_layer = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+            bias=bias,
+        )
 
         self.coord_adder = AddCoordinates(with_r)
 

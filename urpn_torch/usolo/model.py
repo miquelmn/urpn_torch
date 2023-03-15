@@ -10,69 +10,88 @@ from urpn_torch.usolo import cood_conv
 
 
 class URPN(model.UNet):
-    def __init__(self, in_channels=3, features=32, cells: Tuple[int, int] = (5, 5)):
+    def __init__(
+        self,
+        in_channels=3,
+        features=32,
+        cells: Tuple[int, int] = (5, 5),
+        mask_size: Tuple[int, int] = (512, 512),
+    ):
         super(URPN, self).__init__(in_channels, features)
-
-        self.encoder5 = URPN._block(features * 8, features * 16, name="enc5")
-        self.pool5 = nn.MaxPool2d(kernel_size=2, stride=2)
-        
-        self.encoder6 = URPN._block(features * 16, features * 16, name="enc6")
-        self.pool6 = nn.MaxPool2d(kernel_size=2, stride=2)
-        
-        self.bottleneck = URPN._block(features * 16, features * 16, name="bottleneck")
-        
-        self.upconv6 = nn.ConvTranspose2d(features * 16, features * 16, kernel_size=2, stride=2)
-        self.decoder6 = URPN._block((features * 16) * 2, features * 16, name="dec6")
-
-        self.upconv5 = nn.ConvTranspose2d(features * 16, features * 16, kernel_size=2, stride=2)
-        self.decoder5 = URPN._block((features * 16) * 2, features * 8, name="dec5")
-        
-        # Mask branch
-        self.upconv4 = nn.ConvTranspose2d(features * 8, features * 8, kernel_size=2, stride=2)
-        self.decoder4 = URPN._block_coord_conv((features * 8) * 2, features * 8, name="enc1")
-        self.conv = nn.Conv2d(in_channels=features, out_channels=(cells[0] * cells[1]),
-                              kernel_size=1)
+        self.__mask_size = mask_size
 
         # Class branch
-        self.cls_1 = super()._block(features * 16, features * 16, name="cls_1")
+        self.cls_branch = URPN._branch(size=256, name="cls", depth=7)
 
-        self.cls_2 = super()._block(features * 16, features * 16, name="cls_2")
+        self.cls_out_1 = nn.Conv2d(in_channels=256, out_channels=1, kernel_size=1)
+        self.cls_out_2 = nn.Conv2d(in_channels=256, out_channels=1, kernel_size=1)
+        self.cls_out_3 = nn.Conv2d(in_channels=256, out_channels=1, kernel_size=1)
+        self.cls_out_4 = nn.Conv2d(in_channels=256, out_channels=1, kernel_size=1)
+        self.cls_out_5 = nn.Conv2d(in_channels=256, out_channels=1, kernel_size=1)
 
-        self.cls_3 = super()._block(features * 16, features * 8, name="cls_3")
+        self.mask_branch = URPN._branch(size=256, name="branch", depth=7)
+        self.mask_out_1 = nn.Conv2d(
+            in_channels=256, out_channels=(cells[0] * cells[1]), kernel_size=1
+        )
+        self.mask_out_2 = nn.Conv2d(
+            in_channels=256, out_channels=(cells[0] * cells[1]), kernel_size=1
+        )
+        self.mask_out_3 = nn.Conv2d(
+            in_channels=256, out_channels=(cells[0] * cells[1]), kernel_size=1
+        )
+        self.mask_out_4 = nn.Conv2d(
+            in_channels=256, out_channels=(cells[0] * cells[1]), kernel_size=1
+        )
+        self.mask_out_5 = nn.Conv2d(
+            in_channels=256, out_channels=(cells[0] * cells[1]), kernel_size=1
+        )
 
-        self.cls_4 = super()._block(features * 8, features * 4, name="cls_4")
-        
-        self.cls_5 = super()._block(features * 4, features * 2, name="cls_5")
-            
-        self.cls_6 = super()._block(features * 2, features, name="cls_6")
+    @staticmethod
+    def _branch(size, name: str, depth: int):
+        """Creates a SOLO branch.
 
-        self.cls_out = nn.Conv2d(in_channels=features, out_channels=1, kernel_size=1)
+        Args:
+            size: Size of the features maps
+            name: Name of the branch
+            depth: Depth of the branch
+
+        Returns:
+            Pytorch Sequential of UNet blocks with depth and size defined by the parameters
+        """
+        layers = [
+            (f"{name}_{level}", super()._block(size, size, name=f"{name}_{level}"))
+            for level in range(1, depth)
+        ]
+
+        return nn.Sequential(OrderedDict([layers]))
 
     @staticmethod
     def _block_coord_conv(in_channels, features, name):
         return nn.Sequential(
             OrderedDict(
                 [
-                    (name + "conv1",
-                     cood_conv.CoordConv(
-                         in_channels=in_channels,
-                         out_channels=features,
-                         kernel_size=3,
-                         padding=1,
-                         bias=False,
-                     ),
-                     ),
+                    (
+                        name + "conv1",
+                        cood_conv.CoordConv(
+                            in_channels=in_channels,
+                            out_channels=features,
+                            kernel_size=3,
+                            padding=1,
+                            bias=False,
+                        ),
+                    ),
                     (name + "norm1", nn.BatchNorm2d(num_features=features)),
                     (name + "relu1", nn.ReLU(inplace=True)),
-                    (name + "conv2",
-                     nn.Conv2d(
-                         in_channels=features,
-                         out_channels=features,
-                         kernel_size=3,
-                         padding=1,
-                         bias=False,
-                     ),
-                     ),
+                    (
+                        name + "conv2",
+                        nn.Conv2d(
+                            in_channels=features,
+                            out_channels=features,
+                            kernel_size=3,
+                            padding=1,
+                            bias=False,
+                        ),
+                    ),
                     (name + "norm2", nn.BatchNorm2d(num_features=features)),
                     (name + "relu2", nn.ReLU(inplace=True)),
                 ]
@@ -84,50 +103,52 @@ class URPN(model.UNet):
         enc2 = self.encoder2(self.pool1(enc1))
         enc3 = self.encoder3(self.pool2(enc2))
         enc4 = self.encoder4(self.pool3(enc3))
-        enc5 = self.encoder5(self.pool4(enc4))
-        enc6 = self.encoder6(self.pool5(enc5))
+        bottleneck = self.bottleneck(self.pool4(enc4))
 
-        bottleneck = self.bottleneck(self.pool6(enc6))
+        # MASKS
+        al_mask5 = functional.interpolate(bottleneck, self.__mask_size)
+        mask5 = self.mask_branch(al_mask5)
+        mask5 = self.mask_out_5(mask5)
 
-        dec6 = self.upconv6(bottleneck)
-        dec6 = torch.cat((dec6, enc6), dim=1)
-        dec6 = self.decoder6(dec6)
-                
-        dec5 = self.upconv5(dec6)
-        dec5 = torch.cat((dec5, enc5), dim=1)
-        dec5 = self.decoder5(dec5)
-        
-        
-        dec4 = self.upconv4(dec5)
-        dec4 = torch.cat((dec4, enc4), dim=1)
-        dec4 = self.decoder4(dec4)
+        al_mask4 = functional.interpolate(enc4, self.__mask_size)
+        mask4 = self.mask_branch(al_mask4)
+        mask4 = self.mask_out_4(mask4)
 
-        dec3 = self.upconv3(dec4)
-        dec3 = torch.cat((dec3, enc3), dim=1)
-        dec3 = self.decoder3(dec3)
+        al_mask3 = functional.interpolate(enc3, self.__mask_size)
+        mask3 = self.mask_branch(al_mask3)
+        mask3 = self.mask_out_1(mask3)
 
-        dec2 = self.upconv2(dec3)
-        dec2 = torch.cat((dec2, enc2), dim=1)
-        dec2 = self.decoder2(dec2)
+        al_mask2 = functional.interpolate(enc2, self.__mask_size)
+        mask2 = self.mask_branch(al_mask2)
+        mask2 = self.mask_out_1(mask2)
 
-        dec1 = self.upconv1(dec2)
-        dec1 = torch.cat((dec1, enc1), dim=1)
-        dec1 = self.decoder1(dec1)
+        al_mask1 = functional.interpolate(enc1, self.__mask_size)
+        mask1 = self.mask_branch(al_mask1)
+        mask1 = self.mask_out_1(mask1)
 
-        mask = torch.sigmoid(self.conv(dec1))
-        
-        aligned_cls = functional.interpolate(bottleneck, (5, 5))
-        
-        cls1 = self.cls_1(aligned_cls)
-        cls2 = self.cls_2(cls1)
-        cls3 = self.cls_3(cls2)
-        cls4 = self.cls_4(cls3)
-        cls5 = self.cls_5(cls4)
-        cls6 = self.cls_6(cls5)        
+        # Class
 
-        classification = self.cls_out(cls6)
+        al_cls5 = functional.interpolate(bottleneck, (5, 5))
+        cls5 = self.cls_branch(al_cls5)
+        cls5 = self.cls_out_5(cls5)
+
+        al_cls4 = functional.interpolate(enc4, (5, 5))
+        cls4 = self.cls_branch(al_cls4)
+        cls4 = self.cls_out_4(cls4)
+
+        al_cls3 = functional.interpolate(bottleneck, (5, 5))
+        cls3 = self.cls_branch(al_cls3)
+        cls3 = self.cls_out_3(cls3)
+
+        al_cls2 = functional.interpolate(bottleneck, (5, 5))
+        cls2 = self.cls_branch(al_cls2)
+        cls2 = self.cls_out_2(cls2)
+
+        al_cls1 = functional.interpolate(bottleneck, (5, 5))
+        cls1 = self.cls_branch(al_cls1)
+        cls1 = self.cls_out_1(cls1)
+
+        mask = torch.cat([mask5, mask4, mask3, mask2, mask1], 1)
+        classification = torch.cat([cls5, cls4, cls3, cls2, cls1], 1)
 
         return mask, classification
-
-
-
