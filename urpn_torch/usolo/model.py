@@ -58,6 +58,8 @@ class URPN(model.UNet):
         self.mask_out_5 = nn.Conv2d(
             in_channels=256, out_channels=(cells[0] * cells[1]), kernel_size=1
         )
+        
+        self.sigmoid = nn.Sigmoid()
 
     @staticmethod
     def _branch(size, name: str, depth: int):
@@ -133,12 +135,12 @@ class URPN(model.UNet):
         red_mask3 = self.mask_red3(enc3)
         al_mask3 = functional.interpolate(red_mask3, self.__mask_size)
         mask3 = self.mask_branch(al_mask3)
-        mask3 = self.mask_out_1(mask3)
+        mask3 = self.mask_out_3(mask3)
         
         red_mask2 = self.mask_red2(enc2)
         al_mask2 = functional.interpolate(red_mask2, self.__mask_size)
         mask2 = self.mask_branch(al_mask2)
-        mask2 = self.mask_out_1(mask2)
+        mask2 = self.mask_out_2(mask2)
 
         red_mask1 = self.mask_red1(enc1)
         al_mask1 = functional.interpolate(red_mask1, self.__mask_size)
